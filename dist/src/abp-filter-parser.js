@@ -1,75 +1,91 @@
-import * as BloomFilterJS from 'bloom-filter-js';
-import {badFingerprints, badSubstrings} from './badFingerprints.js';
+'use strict';
+
+Object.defineProperty(exports, "__esModule", {
+  value: true
+});
+exports.elementTypeMaskMap = exports.elementTypes = undefined;
+
+var _typeof = typeof Symbol === "function" && typeof Symbol.iterator === "symbol" ? function (obj) { return typeof obj; } : function (obj) { return obj && typeof Symbol === "function" && obj.constructor === Symbol && obj !== Symbol.prototype ? "symbol" : typeof obj; };
+
+exports.parseDomains = parseDomains;
+exports.parseOptions = parseOptions;
+exports.parseHTMLFilter = parseHTMLFilter;
+exports.parseFilter = parseFilter;
+exports.parse = parse;
+exports.matchesFilter = matchesFilter;
+exports.matches = matches;
+exports.getFingerprint = getFingerprint;
+
+var _bloomFilterJs = require('bloom-filter-js');
+
+var BloomFilterJS = _interopRequireWildcard(_bloomFilterJs);
+
+var _badFingerprints = require('./badFingerprints.js');
+
+function _interopRequireWildcard(obj) { if (obj && obj.__esModule) { return obj; } else { var newObj = {}; if (obj != null) { for (var key in obj) { if (Object.prototype.hasOwnProperty.call(obj, key)) newObj[key] = obj[key]; } } newObj.default = obj; return newObj; } }
 
 // let fs = require('fs');
 
 /**
  * bitwise mask of different request types
  */
-export const elementTypes = {
-  SCRIPT: 0o1,
-  IMAGE: 0o2,
-  STYLESHEET: 0o4,
-  OBJECT: 0o10,
-  XMLHTTPREQUEST: 0o20,
-  OBJECTSUBREQUEST: 0o40,
-  SUBDOCUMENT: 0o100,
-  DOCUMENT: 0o200,
-  OTHER: 0o400,
+var elementTypes = exports.elementTypes = {
+  SCRIPT: 1,
+  IMAGE: 2,
+  STYLESHEET: 4,
+  OBJECT: 8,
+  XMLHTTPREQUEST: 16,
+  OBJECTSUBREQUEST: 32,
+  SUBDOCUMENT: 64,
+  DOCUMENT: 128,
+  OTHER: 256
 };
 
 // Maximum number of cached entries to keep for subsequent lookups
-const maxCached = 100;
+var maxCached = 100;
 
 // Maximum number of URL chars to check in match clauses
-const maxUrlChars = 100;
+var maxUrlChars = 100;
 
 // Exact size for fingerprints, if you change also change fingerprintRegexs
-const fingerprintSize = 8;
+var fingerprintSize = 8;
 
 // Regexes used to create fingerprints
 // There's more than one because sometimes a fingerprint is determined to be a bad
 // one and would lead to a lot of collisions in the bloom filter). In those cases
 // we use the 2nd fingerprint.
-let fingerprintRegexs = [
-  /.*([./&_\-=a-zA-Z0-9]{8})\$?.*/,
-  /([./&_\-=a-zA-Z0-9]{8})\$?.*/,
-];
+var fingerprintRegexs = [/.*([./&_\-=a-zA-Z0-9]{8})\$?.*/, /([./&_\-=a-zA-Z0-9]{8})\$?.*/];
 
 /**
  * Maps element types to type mask.
  */
-export const elementTypeMaskMap = new Map([
-  ['script', elementTypes.SCRIPT],
-  ['image', elementTypes.IMAGE],
-  ['stylesheet', elementTypes.STYLESHEET],
-  ['object', elementTypes.OBJECT],
-  ['xmlhttprequest', elementTypes.XMLHTTPREQUEST],
-  ['object-subrequest', elementTypes.OBJECTSUBREQUEST],
-  ['subdocument', elementTypes.SUBDOCUMENT],
-  ['document', elementTypes.DOCUMENT],
-  ['other', elementTypes.OTHER]
-]);
+var elementTypeMaskMap = exports.elementTypeMaskMap = new Map([['script', elementTypes.SCRIPT], ['image', elementTypes.IMAGE], ['stylesheet', elementTypes.STYLESHEET], ['object', elementTypes.OBJECT], ['xmlhttprequest', elementTypes.XMLHTTPREQUEST], ['object-subrequest', elementTypes.OBJECTSUBREQUEST], ['subdocument', elementTypes.SUBDOCUMENT], ['document', elementTypes.DOCUMENT], ['other', elementTypes.OTHER]]);
 
-const separatorCharacters = ':?/=^';
+var separatorCharacters = ':?/=^';
 
 /**
  * Parses the domain string using the passed in separator and
  * fills in options.
  */
-export function parseDomains(input, separator, options) {
+function parseDomains(input, separator, options) {
   options.domains = options.domains || [];
   options.skipDomains = options.skipDomains || [];
-  let domains = input.split(separator);
-  options.domains = options.domains.concat(domains.filter((domain) => domain[0] !== '~'));
-  options.skipDomains = options.skipDomains.concat(domains
-    .filter((domain) => domain[0] === '~')
-    .map((domain) => domain.substring(1)));
+  var domains = input.split(separator);
+  options.domains = options.domains.concat(domains.filter(function (domain) {
+    return domain[0] !== '~';
+  }));
+  options.skipDomains = options.skipDomains.concat(domains.filter(function (domain) {
+    return domain[0] === '~';
+  }).map(function (domain) {
+    return domain.substring(1);
+  }));
 }
 
 if (!Array.prototype.includes) {
-  Array.prototype.includes = function(searchElement /*, fromIndex*/ ) { // eslint-disable-line no-extend-native
+  Array.prototype.includes = function (searchElement /*, fromIndex*/) {
+    // eslint-disable-line no-extend-native
     'use strict';
+
     var O = Object(this);
     var len = parseInt(O.length, 10) || 0;
     if (len === 0) {
@@ -81,13 +97,15 @@ if (!Array.prototype.includes) {
       k = n;
     } else {
       k = len + n;
-      if (k < 0) {k = 0;}
+      if (k < 0) {
+        k = 0;
+      }
     }
     var currentElement;
     while (k < len) {
       currentElement = O[k];
-      if (searchElement === currentElement ||
-         (searchElement !== searchElement && currentElement !== currentElement)) { // eslint-disable-line no-extra-parens
+      if (searchElement === currentElement || searchElement !== searchElement && currentElement !== currentElement) {
+        // eslint-disable-line no-extra-parens
         return true;
       }
       k++;
@@ -96,21 +114,20 @@ if (!Array.prototype.includes) {
   };
 }
 
-
 /**
  * Parses options from the passed in input string
  */
-export function parseOptions(input) {
-  let output = {
-    binaryOptions: new Set(),
+function parseOptions(input) {
+  var output = {
+    binaryOptions: new Set()
   };
-  input.split(',').forEach((option) => {
+  input.split(',').forEach(function (option) {
     option = option.trim();
     if (option.startsWith('domain=')) {
-      let domainString = option.split('=')[1].trim();
+      var domainString = option.split('=')[1].trim();
       parseDomains(domainString, '|', output);
     } else {
-      let optionWithoutPrefix = option[0] === '~' ? option.substring(1) : option;
+      var optionWithoutPrefix = option[0] === '~' ? option.substring(1) : option;
       if (elementTypeMaskMap.has(optionWithoutPrefix)) {
         if (option[0] === '~') {
           output.skipElementTypeMask |= elementTypeMaskMap.get(optionWithoutPrefix);
@@ -128,7 +145,7 @@ export function parseOptions(input) {
  * Finds the first separator character in the input string
  */
 function findFirstSeparatorChar(input, startPos) {
-  for (let i = startPos; i < input.length; i++) {
+  for (var i = startPos; i < input.length; i++) {
     if (separatorCharacters.indexOf(input[i]) !== -1) {
       return i;
     }
@@ -144,8 +161,8 @@ function findFirstSeparatorChar(input, startPos) {
  * @param index: Index of the first hash
  * @param parsedFilterData: The parsedFilterData object to fill
  */
-export function parseHTMLFilter(input, index, parsedFilterData) {
-  let domainsStr = input.substring(0, index);
+function parseHTMLFilter(input, index, parsedFilterData) {
+  var domainsStr = input.substring(0, index);
   parsedFilterData.options = {};
   if (domainsStr.length > 0) {
     parseDomains(domainsStr, ',', parsedFilterData.options);
@@ -153,8 +170,7 @@ export function parseHTMLFilter(input, index, parsedFilterData) {
 
   // The XOR parsedFilterData.elementHidingException is in case the rule already
   // was specified as exception handling with a prefixed @@
-  parsedFilterData.isException = !!(input[index + 1] === '@' ^
-    parsedFilterData.isException);
+  parsedFilterData.isException = !!(input[index + 1] === '@' ^ parsedFilterData.isException);
   if (input[index + 1] === '@') {
     // Skip passed the first # since @# is 2 chars same as ##
     index++;
@@ -162,7 +178,7 @@ export function parseHTMLFilter(input, index, parsedFilterData) {
   parsedFilterData.htmlRuleSelector = input.substring(index + 2);
 }
 
-export function parseFilter(input, parsedFilterData, bloomFilter, exceptionBloomFilter) {
+function parseFilter(input, parsedFilterData, bloomFilter, exceptionBloomFilter) {
   input = input.trim();
   parsedFilterData.rawFilter = input;
 
@@ -172,21 +188,20 @@ export function parseFilter(input, parsedFilterData, bloomFilter, exceptionBloom
   }
 
   // Check for comments
-  let beginIndex = 0;
+  var beginIndex = 0;
   if (input[beginIndex] === '[' || input[beginIndex] === '!') {
     parsedFilterData.isComment = true;
     return false;
   }
 
   // Check for exception instead of filter
-  parsedFilterData.isException = input[beginIndex] === '@' &&
-    input[beginIndex + 1] === '@';
+  parsedFilterData.isException = input[beginIndex] === '@' && input[beginIndex + 1] === '@';
   if (parsedFilterData.isException) {
     beginIndex = 2;
   }
 
   // Check for element hiding rules
-  let index = input.indexOf('#', beginIndex);
+  var index = input.indexOf('#', beginIndex);
   if (index !== -1) {
     if (input[index + 1] === '#' || input[index + 1] === '@') {
       parseHTMLFilter(input.substring(beginIndex), index - beginIndex, parsedFilterData);
@@ -207,8 +222,7 @@ export function parseFilter(input, parsedFilterData, bloomFilter, exceptionBloom
   }
 
   // Check for a regex
-  parsedFilterData.isRegex = input[beginIndex] === '/' &&
-    input[input.length - 1] === '/' && beginIndex !== input.length - 1;
+  parsedFilterData.isRegex = input[beginIndex] === '/' && input[input.length - 1] === '/' && beginIndex !== input.length - 1;
   if (parsedFilterData.isRegex) {
     parsedFilterData.data = input.slice(beginIndex + 1, -1);
     return true;
@@ -219,7 +233,7 @@ export function parseFilter(input, parsedFilterData, bloomFilter, exceptionBloom
     // Check for an anchored domain name
     if (input[beginIndex + 1] === '|') {
       parsedFilterData.hostAnchored = true;
-      let indexOfSep = findFirstSeparatorChar(input, beginIndex + 1);
+      var indexOfSep = findFirstSeparatorChar(input, beginIndex + 1);
       if (indexOfSep === -1) {
         indexOfSep = input.length;
       }
@@ -242,7 +256,7 @@ export function parseFilter(input, parsedFilterData, bloomFilter, exceptionBloom
   } else if (bloomFilter) {
     // To check for duplicates
     //if (bloomFilter.exists(getFingerprint(parsedFilterData.data))) {
-      // console.log('duplicate found for data: ' + getFingerprint(parsedFilterData.data));
+    // console.log('duplicate found for data: ' + getFingerprint(parsedFilterData.data));
     //}
     // console.log('parse:', parsedFilterData.data, 'fingerprint:', getFingerprint(parsedFilterData.data));
     bloomFilter.add(getFingerprint(parsedFilterData.data));
@@ -257,16 +271,16 @@ export function parseFilter(input, parsedFilterData, bloomFilter, exceptionBloom
  * @param parserData out parameter which will be filled
  *   with the filters, exceptionFilters and htmlRuleFilters.
  */
-export function parse(input, parserData) {
+function parse(input, parserData) {
   parserData.bloomFilter = parserData.bloomFilter || new BloomFilterJS.BloomFilter();
   parserData.exceptionBloomFilter = parserData.exceptionBloomFilter || new BloomFilterJS.BloomFilter();
   parserData.filters = parserData.filters || [];
   parserData.noFingerprintFilters = parserData.noFingerprintFilters || [];
   parserData.exceptionFilters = parserData.exceptionFilters || [];
   parserData.htmlRuleFilters = parserData.htmlRuleFilters || [];
-  let startPos = 0;
-  let endPos = input.length;
-  let newline = '\n';
+  var startPos = 0;
+  var endPos = input.length;
+  var newline = '\n';
   while (startPos <= input.length) {
     endPos = input.indexOf(newline, startPos);
     if (endPos === -1) {
@@ -276,10 +290,10 @@ export function parse(input, parserData) {
     if (endPos === -1) {
       endPos = input.length;
     }
-    let filter = input.substring(startPos, endPos);
-    let parsedFilterData = {};
+    var filter = input.substring(startPos, endPos);
+    var parsedFilterData = {};
     if (parseFilter(filter, parsedFilterData, parserData.bloomFilter, parserData.exceptionBloomFilter)) {
-      let fingerprint = getFingerprint(parsedFilterData.data);
+      var fingerprint = getFingerprint(parsedFilterData.data);
       if (parsedFilterData.htmlRuleSelector) {
         parserData.htmlRuleFilters.push(parsedFilterData);
       } else if (parsedFilterData.isException) {
@@ -298,7 +312,7 @@ export function parse(input, parserData) {
  * Obtains the domain index of the input filter line
  */
 function getDomainIndex(input) {
-  let index = input.indexOf(':');
+  var index = input.indexOf(':');
   ++index;
   while (input[index] === '/') {
     index++;
@@ -315,12 +329,12 @@ function indexOfFilter(input, filter, startingPos) {
     return -1;
   }
 
-  let filterParts = filter.split('^');
-  let index = startingPos;
-  let beginIndex = -1;
-  let prefixedSeparatorChar = false;
+  var filterParts = filter.split('^');
+  var index = startingPos;
+  var beginIndex = -1;
+  var prefixedSeparatorChar = false;
 
-  for (let f = 0; f < filterParts.length; f++) {
+  for (var f = 0; f < filterParts.length; f++) {
     if (filterParts[f] === '') {
       prefixedSeparatorChar = true;
       continue;
@@ -341,12 +355,11 @@ function indexOfFilter(input, filter, startingPos) {
     }
     // If we are in an in between filterPart
     if (f + 1 < filterParts.length &&
-        // and we have some chars left in the input past the last filter match
-        input.length > index + filterParts[f].length) {
+    // and we have some chars left in the input past the last filter match
+    input.length > index + filterParts[f].length) {
       if (separatorCharacters.indexOf(input[index + filterParts[f].length]) === -1) {
         return -1;
       }
-
     }
 
     prefixedSeparatorChar = false;
@@ -355,8 +368,8 @@ function indexOfFilter(input, filter, startingPos) {
 }
 
 function getUrlHost(input) {
-  let domainIndexStart = getDomainIndex(input);
-  let domainIndexEnd = findFirstSeparatorChar(input, domainIndexStart);
+  var domainIndexStart = getDomainIndex(input);
+  var domainIndexEnd = findFirstSeparatorChar(input, domainIndexStart);
   if (domainIndexEnd === -1) {
     domainIndexEnd = input.length;
   }
@@ -364,9 +377,7 @@ function getUrlHost(input) {
 }
 
 function filterDataContainsOption(parsedFilterData, option) {
-  return parsedFilterData.options &&
-    parsedFilterData.options.binaryOptions &&
-    parsedFilterData.options.binaryOptions.has(option);
+  return parsedFilterData.options && parsedFilterData.options.binaryOptions && parsedFilterData.options.binaryOptions.has(option);
 }
 
 function isThirdPartyHost(baseContextHost, testHost) {
@@ -374,7 +385,7 @@ function isThirdPartyHost(baseContextHost, testHost) {
     return true;
   }
 
-  let c = testHost[testHost.length - baseContextHost.length - 1];
+  var c = testHost[testHost.length - baseContextHost.length - 1];
   return c !== '.' && c !== undefined;
 }
 
@@ -383,13 +394,13 @@ function isThirdPartyHost(baseContextHost, testHost) {
 // should be considered given the current context.
 // By specifying context params, you can filter out the number of rules which are
 // considered.
-function matchOptions(parsedFilterData, input, contextParams = {}) {
+function matchOptions(parsedFilterData, input) {
+  var contextParams = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+
   if (contextParams.elementTypeMask !== undefined && parsedFilterData.options) {
-    if (parsedFilterData.options.elementTypeMask !== undefined &&
-        !(parsedFilterData.options.elementTypeMask & contextParams.elementTypeMask)) {
+    if (parsedFilterData.options.elementTypeMask !== undefined && !(parsedFilterData.options.elementTypeMask & contextParams.elementTypeMask)) {
       return false;
-    } if (parsedFilterData.options.skipElementTypeMask !== undefined &&
-          parsedFilterData.options.skipElementTypeMask & contextParams.elementTypeMask) {
+    }if (parsedFilterData.options.skipElementTypeMask !== undefined && parsedFilterData.options.skipElementTypeMask & contextParams.elementTypeMask) {
       return false;
     }
   }
@@ -398,24 +409,28 @@ function matchOptions(parsedFilterData, input, contextParams = {}) {
   if (contextParams.domain !== undefined && parsedFilterData.options) {
     if (parsedFilterData.options.domains || parsedFilterData.options.skipDomains) {
       // Get the domains that should be considered
-      let shouldBlockDomains = parsedFilterData.options.domains.filter((domain) =>
-        !isThirdPartyHost(domain, contextParams.domain));
+      var shouldBlockDomains = parsedFilterData.options.domains.filter(function (domain) {
+        return !isThirdPartyHost(domain, contextParams.domain);
+      });
 
-      let shouldSkipDomains = parsedFilterData.options.skipDomains.filter((domain) =>
-        !isThirdPartyHost(domain, contextParams.domain));
+      var shouldSkipDomains = parsedFilterData.options.skipDomains.filter(function (domain) {
+        return !isThirdPartyHost(domain, contextParams.domain);
+      });
       // Handle cases like: example.com|~foo.example.com should llow for foo.example.com
       // But ~example.com|foo.example.com should block for foo.example.com
-      let leftOverBlocking = shouldBlockDomains.filter((shouldBlockDomain) =>
-        shouldSkipDomains.every((shouldSkipDomain) =>
-          isThirdPartyHost(shouldBlockDomain, shouldSkipDomain)));
-      let leftOverSkipping = shouldSkipDomains.filter((shouldSkipDomain) =>
-        shouldBlockDomains.every((shouldBlockDomain) =>
-          isThirdPartyHost(shouldSkipDomain, shouldBlockDomain)));
+      var leftOverBlocking = shouldBlockDomains.filter(function (shouldBlockDomain) {
+        return shouldSkipDomains.every(function (shouldSkipDomain) {
+          return isThirdPartyHost(shouldBlockDomain, shouldSkipDomain);
+        });
+      });
+      var leftOverSkipping = shouldSkipDomains.filter(function (shouldSkipDomain) {
+        return shouldBlockDomains.every(function (shouldBlockDomain) {
+          return isThirdPartyHost(shouldSkipDomain, shouldBlockDomain);
+        });
+      });
 
       // If we have none left over, then we shouldn't consider this a match
-      if (shouldBlockDomains.length === 0 && parsedFilterData.options.domains.length !== 0 ||
-          shouldBlockDomains.length > 0 && leftOverBlocking.length === 0 ||
-          shouldSkipDomains.length > 0 && leftOverSkipping.length > 0) {
+      if (shouldBlockDomains.length === 0 && parsedFilterData.options.domains.length !== 0 || shouldBlockDomains.length > 0 && leftOverBlocking.length === 0 || shouldSkipDomains.length > 0 && leftOverSkipping.length > 0) {
         return false;
       }
     }
@@ -425,8 +440,8 @@ function matchOptions(parsedFilterData, input, contextParams = {}) {
   if (contextParams['third-party'] !== undefined) {
     // Is the current rule check for third party only?
     if (filterDataContainsOption(parsedFilterData, 'third-party')) {
-      let inputHost = getUrlHost(input);
-      let inputHostIsThirdParty = isThirdPartyHost(parsedFilterData.host, inputHost);
+      var inputHost = getUrlHost(input);
+      var inputHostIsThirdParty = isThirdPartyHost(parsedFilterData.host, inputHost);
       if (inputHostIsThirdParty || !contextParams['third-party']) {
         return false;
       }
@@ -439,7 +454,10 @@ function matchOptions(parsedFilterData, input, contextParams = {}) {
 /**
  * Given an individual parsed filter data determines if the input url should block.
  */
-export function matchesFilter(parsedFilterData, input, contextParams = {}, cachedInputData = {}) {
+function matchesFilter(parsedFilterData, input) {
+  var contextParams = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+  var cachedInputData = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
+
   if (!matchOptions(parsedFilterData, input, contextParams)) {
     return false;
   }
@@ -473,39 +491,62 @@ export function matchesFilter(parsedFilterData, input, contextParams = {}, cache
       cachedInputData.currentHost = getUrlHost(input);
     }
 
-    return !isThirdPartyHost(parsedFilterData.host, cachedInputData.currentHost) &&
-      indexOfFilter(input, parsedFilterData.data) !== -1;
+    return !isThirdPartyHost(parsedFilterData.host, cachedInputData.currentHost) && indexOfFilter(input, parsedFilterData.data) !== -1;
   }
 
   // Wildcard match comparison
-  let parts = parsedFilterData.data.split('*');
-  let index = 0;
-  for (let part of parts) {
-    let newIndex = indexOfFilter(input, part, index);
-    if (newIndex === -1) {
-      return false;
+  var parts = parsedFilterData.data.split('*');
+  var index = 0;
+  var _iteratorNormalCompletion = true;
+  var _didIteratorError = false;
+  var _iteratorError = undefined;
+
+  try {
+    for (var _iterator = parts[Symbol.iterator](), _step; !(_iteratorNormalCompletion = (_step = _iterator.next()).done); _iteratorNormalCompletion = true) {
+      var part = _step.value;
+
+      var newIndex = indexOfFilter(input, part, index);
+      if (newIndex === -1) {
+        return false;
+      }
+      index = newIndex + part.length;
     }
-    index = newIndex + part.length;
+  } catch (err) {
+    _didIteratorError = true;
+    _iteratorError = err;
+  } finally {
+    try {
+      if (!_iteratorNormalCompletion && _iterator.return) {
+        _iterator.return();
+      }
+    } finally {
+      if (_didIteratorError) {
+        throw _iteratorError;
+      }
+    }
   }
 
   return true;
 }
 
-function discoverMatchingPrefix(array, bloomFilter, str, prefixLen = fingerprintSize) {
+function discoverMatchingPrefix(array, bloomFilter, str) {
+  var prefixLen = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : fingerprintSize;
+
   for (var i = 0; i < str.length - prefixLen + 1; i++) {
-    let sub = str.substring(i, i + prefixLen);
+    var sub = str.substring(i, i + prefixLen);
     if (bloomFilter.exists(sub)) {
-      array.push({ badFingerprint: sub, src: str});
+      array.push({ badFingerprint: sub, src: str });
       // console.log('bad-fingerprint:', sub, 'for url:', str);
     } else {
-      // console.log('good-fingerprint:', sub, 'for url:', str);
-    }
+        // console.log('good-fingerprint:', sub, 'for url:', str);
+      }
   }
 }
 
 function hasMatchingFilters(filterList, parsedFilterData, input, contextParams, cachedInputData) {
-  const foundFilter = filterList.find(parsedFilterData2 =>
-    matchesFilter(parsedFilterData2, input, contextParams, cachedInputData));
+  var foundFilter = filterList.find(function (parsedFilterData2) {
+    return matchesFilter(parsedFilterData2, input, contextParams, cachedInputData);
+  });
   if (foundFilter && cachedInputData.matchedFilters && foundFilter.rawFilter) {
 
     // increment the count of matches
@@ -514,7 +555,7 @@ function hasMatchingFilters(filterList, parsedFilterData, input, contextParams, 
     if (cachedInputData.matchedFilters[foundFilter.rawFilter]) {
       cachedInputData.matchedFilters[foundFilter.rawFilter].matches += 1;
     } else {
-      cachedInputData.matchedFilters[foundFilter.rawFilter]  = { matches: 1 };
+      cachedInputData.matchedFilters[foundFilter.rawFilter] = { matches: 1 };
     }
 
     // fs.writeFileSync('easylist-matches.json', JSON.stringify(cachedInputData.matchedFilters), 'utf-8');
@@ -528,7 +569,10 @@ function hasMatchingFilters(filterList, parsedFilterData, input, contextParams, 
  * @param input The input URL
  * @return true if the URL should be blocked
  */
-export function matches(parserData, input, contextParams = {}, cachedInputData = { }) {
+function matches(parserData, input) {
+  var contextParams = arguments.length > 2 && arguments[2] !== undefined ? arguments[2] : {};
+  var cachedInputData = arguments.length > 3 && arguments[3] !== undefined ? arguments[3] : {};
+
   cachedInputData.bloomNegativeCount = cachedInputData.bloomNegativeCount || 0;
   cachedInputData.bloomPositiveCount = cachedInputData.bloomPositiveCount || 0;
   cachedInputData.notMatchCount = cachedInputData.notMatchCount || 0;
@@ -536,8 +580,8 @@ export function matches(parserData, input, contextParams = {}, cachedInputData =
   cachedInputData.matchedFilters = cachedInputData.matchedFilters || {};
 
   cachedInputData.bloomFalsePositiveCount = cachedInputData.bloomFalsePositiveCount || 0;
-  let hasMatchingNoFingerprintFilters;
-  let cleanedInput = input.replace(/^https?:\/\//, '');
+  var hasMatchingNoFingerprintFilters = void 0;
+  var cleanedInput = input.replace(/^https?:\/\//, '');
   if (cleanedInput.length > maxUrlChars) {
     cleanedInput = cleanedInput.substring(0, maxUrlChars);
   }
@@ -546,8 +590,7 @@ export function matches(parserData, input, contextParams = {}, cachedInputData =
       cachedInputData.bloomNegativeCount++;
       cachedInputData.notMatchCount++;
       // console.log('early return because of bloom filter check!');
-      hasMatchingNoFingerprintFilters =
-        hasMatchingFilters(parserData.noFingerprintFilters, parserData, input, contextParams, cachedInputData);
+      hasMatchingNoFingerprintFilters = hasMatchingFilters(parserData.noFingerprintFilters, parserData, input, contextParams, cachedInputData);
 
       if (!hasMatchingNoFingerprintFilters) {
         return false;
@@ -571,12 +614,10 @@ export function matches(parserData, input, contextParams = {}, cachedInputData =
     return false;
   }
 
-  if (hasMatchingFilters(parserData.filters, parserData, input, contextParams, cachedInputData) ||
-      hasMatchingNoFingerprintFilters === true || hasMatchingNoFingerprintFilters === undefined &&
-      hasMatchingFilters(parserData.noFingerprintFilters, parserData, input, contextParams, cachedInputData)) {
+  if (hasMatchingFilters(parserData.filters, parserData, input, contextParams, cachedInputData) || hasMatchingNoFingerprintFilters === true || hasMatchingNoFingerprintFilters === undefined && hasMatchingFilters(parserData.noFingerprintFilters, parserData, input, contextParams, cachedInputData)) {
     // Check for exceptions only when there's a match because matches are
     // rare compared to the volume of checks
-    let exceptionBloomFilterMiss = parserData.exceptionBloomFilter && !parserData.exceptionBloomFilter.substringExists(cleanedInput, fingerprintSize);
+    var exceptionBloomFilterMiss = parserData.exceptionBloomFilter && !parserData.exceptionBloomFilter.substringExists(cleanedInput, fingerprintSize);
     if (!exceptionBloomFilterMiss || hasMatchingFilters(parserData.exceptionFilters, parserData, input, contextParams, cachedInputData)) {
       cachedInputData.notMatchCount++;
       return false;
@@ -598,22 +639,30 @@ export function matches(parserData, input, contextParams = {}, cachedInputData =
 /**
  * Obtains a fingerprint for the specified filter
  */
-export function getFingerprint(str) {
-  for (var i = 0; i < fingerprintRegexs.length; i++) {
-    let fingerprintRegex = fingerprintRegexs[i];
-    let result = fingerprintRegex.exec(str);
+function getFingerprint(str) {
+  var _loop = function _loop() {
+    var fingerprintRegex = fingerprintRegexs[i];
+    var result = fingerprintRegex.exec(str);
     fingerprintRegex.lastIndex = 0;
 
-    if (result &&
-        !badFingerprints.includes(result[1]) &&
-        !badSubstrings.find(badSubstring => result[1].includes(badSubstring))) {
-      return result[1];
+    if (result && !_badFingerprints.badFingerprints.includes(result[1]) && !_badFingerprints.badSubstrings.find(function (badSubstring) {
+      return result[1].includes(badSubstring);
+    })) {
+      return {
+        v: result[1]
+      };
     }
     if (result) {
       // console.log('checking again for str:', str, 'result:', result[1]);
     } else {
-      // console.log('checking again for str, no result');
-    }
+        // console.log('checking again for str, no result');
+      }
+  };
+
+  for (var i = 0; i < fingerprintRegexs.length; i++) {
+    var _ret = _loop();
+
+    if ((typeof _ret === 'undefined' ? 'undefined' : _typeof(_ret)) === "object") return _ret.v;
   }
   // This is pretty ugly but getting fingerprints is assumed to be used only when preprocessing and
   // in a live environment.
@@ -624,3 +673,4 @@ export function getFingerprint(str) {
   // console.warn('Warning: Could not determine a good fingerprint for:', str);
   return '';
 }
+//# sourceMappingURL=abp-filter-parser.js.map
